@@ -4,13 +4,11 @@ import aiohttp
 import asyncio
 import json
 
-
 from aiohttp import FormData
 from colorama import init as colorama_init
 from colorama import Fore, Back, Style
 
 from datetime import datetime as dt
-
 
 '''
 TODO:
@@ -20,9 +18,6 @@ TODO:
     - General UI Improvement..
     - 
 '''
-
-
-
 
 
 async def grid_request(form, header_arg):
@@ -35,6 +30,7 @@ async def grid_request(form, header_arg):
 
         async with response:
             return await response.json()
+
 
 class Room:
     def __init__(self, name=None, id=None, time_slots=None):
@@ -54,7 +50,6 @@ class Room:
                 string += f'{Fore.RED}\N{FULL BLOCK}'
         string += f'{Fore.YELLOW}]'
         print(string, end=' :: ')
-
 
     def print_availability(self):
         time_format = "[%m-%d at %I:%M %p]"
@@ -79,23 +74,25 @@ class Room:
             print_range(current_start, datetime.datetime.fromisoformat(self.time_slots[-1].get('end')))
 
 
-def option_menu():
-    options = {
-        1: dict(gid=0),
-        2: dict(gid=924),
-        3: dict(gid=905),
-        4: dict(gid=906),
-    }
+def option_menu(menu):
+    match menu:
+        case 1:
+            options = {
+                1: dict(gid=0),
+                2: dict(gid=924),
+                3: dict(gid=905),
+                4: dict(gid=906),
+            }
 
-    print(f'{Fore.GREEN}------------- Select A Room Group -------------')
-    print(f'--- Bug: unknown rooms with 10/15min increments display ---')
-    print(f'1) All Spaces')
-    print(f'2) Ground Floor')
-    print(f'3) Main Floor')
-    print(f'4) Fourth Floor')
+            print(f'{Fore.GREEN}------------- Select A Room Group -------------')
+            print(f'1) All Spaces')
+            print(f'2) Ground Floor')
+            print(f'3) Main Floor')
+            print(f'4) Fourth Floor')
 
-    choice = input("Select: ")
-    return options[int(choice)]
+            choice = input("Select: ")
+            return options[int(choice)]
+
 
 def parse_json_response(raw_grid):
     """
@@ -113,7 +110,7 @@ def parse_json_response(raw_grid):
     entries = []
     start_id = raw_grid[0].get('itemId')
 
-    #This will parse the response into a dict of rooms containing a display name and then a slot.
+    # This will parse the response into a dict of rooms containing a display name and then a slot.
     while bool(raw_grid):
         entry = parse_timeslot(raw_grid.pop(0))
         entry_id = entry.pop('itemId')
@@ -143,6 +140,7 @@ def parse_json_response(raw_grid):
 
     return parsed_json
 
+
 def parse_timeslot(slot):
     """
 
@@ -152,9 +150,10 @@ def parse_timeslot(slot):
 
     if slot.get('className') is not None:
         slot.pop('className')
-        availability= False
+        availability = False
     slot.update({"available": availability})
     return slot
+
 
 def build_rooms(parsed_grid):
     room_list = []
@@ -171,11 +170,13 @@ def build_rooms(parsed_grid):
         ))
     return room_list
 
+
 def print_rooms(room_list):
     for room in room_list:
         room.print_timeslots()
         room.print_availability()
     print(f'\nRooms: {len(room_list)}')
+
 
 def dump_raw_response(to_write):
     raw_grid_json = json.dumps(to_write, indent=4)
@@ -194,7 +195,7 @@ if __name__ == '__main__':
     headers = {'Origin': 'https://libcal.lakeheadu.ca'}
     headers.update({'Referer': 'https://libcal.lakeheadu.ca/spaces?lid=437&gid=0&c=0'})
 
-    post_data.update(option_menu())
+    post_data.update(option_menu(1))
     grid_data = FormData(post_data)
 
     # Not really needed we can do a non async request because we wait for it anyway.
@@ -209,8 +210,20 @@ if __name__ == '__main__':
 
     dump_raw_response(grid)
     parsed_json = parse_json_response(grid['slots'])
-
     room_list = build_rooms(parsed_json)
-    print_rooms(room_list)
 
+    print('------------- Select A Room -------------')
+    for i in range(1, len(room_list) + 1):
+        print(f'{i}) {room_list[i - 1].name}', end='    ')
+        if i % 3 == 0:
+            print()  # linebreak
+        if i % 9 == 0:
+            print()  # linebreak
 
+    i = input("\n\nSelect (*) For All: ")
+    if i == '*':
+        print_rooms(room_list)
+    else:
+        i=int(i)
+        room_list[i].print_timeslots()
+        room_list[i].print_availability()
