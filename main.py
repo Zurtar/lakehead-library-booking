@@ -48,53 +48,35 @@ class Room:
     def print_timeslots(self):
         string = f'\n{Fore.YELLOW} {self.name}   ::['
         for time_slot in self.time_slots:
-            if 'className' not in time_slot.keys():
+            if time_slot.get('available'):
                 string += f'{Fore.GREEN}\N{FULL BLOCK}'
             else:
                 string += f'{Fore.RED}\N{FULL BLOCK}'
         string += f'{Fore.YELLOW}]'
         print(string, end=' :: ')
 
+
     def print_availability(self):
         time_format = "[%m-%d at %I:%M %p]"
 
-        left_bound = datetime.datetime(2500, 1, 1)
-        right_bound = None
-        valid_range = False
+        def print_range(start, end):
+            start_string = start.strftime(time_format)
+            end_string = end.strftime(time_format)
+            print(f"From {start_string} -> {end_string}", end=", ")
+
+        available = False
+        current_start = None
 
         for ts in self.time_slots:
-            ts_start_time = dt.fromisoformat(ts.get('start'))
+            if ts.get('available') and not available:
+                available = True
+                current_start = datetime.datetime.fromisoformat(ts.get('start'))
+            elif not ts.get('available') and available:
+                available = False
+                print_range(current_start, datetime.datetime.fromisoformat(ts.get('start')))
 
-            # If Room Is Free
-            if 'className' not in ts:
-                if left_bound > ts_start_time:
-                    left_bound = ts_start_time
-
-                valid_range = True
-                right_bound = dt.fromisoformat(ts.get('end'))
-
-            # If Room is taken
-            else:
-                if valid_range:
-                    valid_range = False
-
-                    left_bound_string = dt.strftime(left_bound, time_format)
-                    right_bound_string = dt.strftime(right_bound, time_format)
-
-                    print(f'from {left_bound_string} -> {right_bound_string}', end=', ')
-                else:
-                    left_bound = datetime.datetime(2500, 1, 1)
-
-        if valid_range:
-            left_bound_string = dt.strftime(left_bound, time_format)
-            right_bound_string = dt.strftime(right_bound, time_format)
-
-            print(f'from {left_bound_string} -> {right_bound_string}', end=', ')
-
-    # get first timeslots start/end date/time. For every other slot verify it is on the same DAY as start timeslot.
-    # and className isn't set. if className is set end date as that slots end date and print range! if day changes do
-    # the same but for the last available time, which will be hard coded based on schedule, maybe. or we have to store
-    # the previous data...
+        if available:
+            print_range(current_start, datetime.datetime.fromisoformat(self.time_slots[-1].get('end')))
 
 
 def option_menu():
@@ -131,8 +113,9 @@ def parse_json_response(raw_grid):
     entries = []
     start_id = raw_grid[0].get('itemId')
 
+    #This will parse the response into a dict of rooms containing a display name and then a slot.
     while bool(raw_grid):
-        entry = raw_grid.pop(0)
+        entry = parse_timeslot(raw_grid.pop(0))
         entry_id = entry.pop('itemId')
 
         if entry_id != start_id:
@@ -159,6 +142,19 @@ def parse_json_response(raw_grid):
     name_file.close()
 
     return parsed_json
+
+def parse_timeslot(slot):
+    """
+
+    :type slot: dict
+    """
+    availability = True
+
+    if slot.get('className') is not None:
+        slot.pop('className')
+        availability= False
+    slot.update({"available": availability})
+    return slot
 
 def build_rooms(parsed_grid):
     room_list = []
