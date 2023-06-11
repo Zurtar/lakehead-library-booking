@@ -41,9 +41,11 @@ class Room:
             else:
                 string += f'{Fore.RED}\N{FULL BLOCK}'
         string += f'{Fore.YELLOW}]'
-        print(string)
+        print(string, end=' :: ')
 
     def print_availability(self):
+        time_format = "[%m-%d at %I:%M %p]"
+
         left_bound = datetime.datetime(2500, 1, 1)
         right_bound = None
         valid_range = False
@@ -55,7 +57,6 @@ class Room:
             if 'className' not in ts:
                 if left_bound > ts_start_time:
                     left_bound = ts_start_time
-                    right_bound = dt.fromisoformat(ts.get('end'))
 
                 valid_range = True
                 right_bound = dt.fromisoformat(ts.get('end'))
@@ -65,18 +66,18 @@ class Room:
                 if valid_range:
                     valid_range = False
 
-                    left_bound_string = dt.strftime(left_bound, "%d %I:%M %p")
-                    right_bound_string = dt.strftime(right_bound, "%d %I:%M %p")
+                    left_bound_string = dt.strftime(left_bound, time_format)
+                    right_bound_string = dt.strftime(right_bound,  time_format)
 
-                    print(f'    from {left_bound_string} -> {right_bound_string}')
+                    print(f'from {left_bound_string} -> {right_bound_string}', end=', ')
                 else:
                     left_bound = datetime.datetime(2500, 1, 1)
 
         if valid_range:
-            left_bound_string = dt.strftime(left_bound, "%I:%M %p")
-            right_bound_string = dt.strftime(right_bound, "%I:%M %p")
+            left_bound_string = dt.strftime(left_bound, time_format)
+            right_bound_string = dt.strftime(right_bound, time_format)
 
-            print(f'    from {left_bound_string} -> {right_bound_string}')
+            print(f'from {left_bound_string} -> {right_bound_string}', end=', ')
 
     # get first timeslots start/end date/time. For every other slot verify it is on the same DAY as start timeslot.
     # and className isn't set. if className is set end date as that slots end date and print range! if day changes do
@@ -93,10 +94,11 @@ def option_menu():
     }
 
     print(f'{Fore.GREEN}------------- Select A Room Group -------------')
-    print(f'1) All Spaces (Current Bugged)')
+    print(f'--- Bug: unknown rooms with 10/15min increments display ---')
+    print(f'1) All Spaces')
     print(f'2) Ground Floor')
     print(f'3) Main Floor')
-    print(f'3) Fourth Floor (Bugged, unknown rooms with 10/15min increments display, same with Allspaces)')
+    print(f'4) Fourth Floor')
 
     choice = input("Select: ")
     return options[int(choice)]
@@ -137,13 +139,18 @@ if __name__ == '__main__':
             rooms.append((Room(eid=slot_id)))
             room_entry.clear()
         room_entry.append(slot)
+
     rooms[-1].time_slots = room_entry.copy()
     rooms.pop(0)
 
     for room in rooms:
-        room.print_timeslots()
-        room.print_availability()
-
+        # awful way to remove the weird 10-minute slot rooms...
+        if len(room.time_slots) > 26:
+            rooms.remove(room)
+        else:
+            room.print_timeslots()
+            room.print_availability()
+    print('\n'+str(len(rooms)))
 # https://library.lakeheadu.ca/r/
 
 """
