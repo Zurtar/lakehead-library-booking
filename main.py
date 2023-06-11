@@ -4,13 +4,25 @@ import aiohttp
 import asyncio
 import json
 
-from datetime import date, timedelta
 
 from aiohttp import FormData
 from colorama import init as colorama_init
 from colorama import Fore, Back, Style
 
 from datetime import datetime as dt
+
+
+'''
+TODO:
+    - General cleanup
+    - Right now we just get the times, build an actual booking request
+    - Add confirmation portion.
+    - General UI Improvement..
+    - 
+'''
+
+
+
 
 
 async def grid_request(form, header_arg):
@@ -24,17 +36,17 @@ async def grid_request(form, header_arg):
         async with response:
             return await response.json()
 
-
 class Room:
-    def __init__(self, eid=None, time_slots=None):
-        self.eid = eid
+    def __init__(self, name=None, id=None, time_slots=None):
+        self.name = name
+        self.id = id
         self.time_slots = time_slots
 
     def __str__(self):
-        return f'EID:{self.eid}, time_slot_size={len(self.time_slots)}'
+        return f'EID:{self.id}, time_slot_size={len(self.time_slots)}'
 
     def print_timeslots(self):
-        string = f'\n{Fore.YELLOW}Room #{self.eid}   ::['
+        string = f'\n{Fore.YELLOW} {self.name}   ::['
         for time_slot in self.time_slots:
             if 'className' not in time_slot.keys():
                 string += f'{Fore.GREEN}\N{FULL BLOCK}'
@@ -67,7 +79,7 @@ class Room:
                     valid_range = False
 
                     left_bound_string = dt.strftime(left_bound, time_format)
-                    right_bound_string = dt.strftime(right_bound,  time_format)
+                    right_bound_string = dt.strftime(right_bound, time_format)
 
                     print(f'from {left_bound_string} -> {right_bound_string}', end=', ')
                 else:
@@ -87,10 +99,10 @@ class Room:
 
 def option_menu():
     options = {
-        1: 'https://libcal.lakeheadu.ca/reserve/',
-        2: 'https://libcal.lakeheadu.ca/reserve/ground-floor-study-rooms',
-        3: 'https://libcal.lakeheadu.ca/reserve/main-floor-study-rooms',
-        4: 'https://libcal.lakeheadu.ca/reserve/fourth-floor-study-rooms'
+        1: dict(gid=0),
+        2: dict(gid=924),
+        3: dict(gid=905),
+        4: dict(gid=906),
     }
 
     print(f'{Fore.GREEN}------------- Select A Room Group -------------')
@@ -103,6 +115,78 @@ def option_menu():
     choice = input("Select: ")
     return options[int(choice)]
 
+def parse_json_response(raw_grid):
+    """
+    :type raw_grid: list
+    """
+    # Dictionary that will hold our parsed json datat
+    parsed_json = dict()
+
+    # Load our Display names for rooms
+    name_file = open('room_names.json')
+    room_names_json = json.load(name_file)
+    room_names_all = room_names_json.get('all_rooms')
+    # room_names_invalid = room_names_json.get('ignore_list')
+
+    entries = []
+    start_id = raw_grid[0].get('itemId')
+
+    while bool(raw_grid):
+        entry = raw_grid.pop(0)
+        entry_id = entry.pop('itemId')
+
+        if entry_id != start_id:
+            parsed_json.update({
+                start_id: {'name': room_names_all.get(str(start_id)), 'slots': entries.copy()}
+            })
+            start_id = entry_id
+            entries.clear()
+
+        entries.append(entry)
+
+    parsed_json.update({
+        start_id: {'name': room_names_all.get(str(start_id)), 'slots': entries.copy()}
+    })
+
+    # Trim ignored keys.
+    # for key in room_names_invalid.keys():
+    #    parsed_json.pop(int(key), None)
+
+    with open("parsed_response.json", "w") as parsed_file:
+        parsed_file.write(json.dumps(parsed_json, indent=4))
+
+    parsed_file.close()
+    name_file.close()
+
+    return parsed_json
+
+def build_rooms(parsed_grid):
+    room_list = []
+    for room_id in parsed_grid.keys():
+        room_entry = parsed_grid.get(room_id)
+
+        # If we have a display name for the room use that otherwise it uses its raw room_id (Ternary opp.)
+        room_name = (room_entry.get('name'), room_id)[room_entry.get('name') is None]
+
+        room_list.append(Room(
+            name=room_name,
+            id=room_id,
+            time_slots=room_entry.get('slots')
+        ))
+    return room_list
+
+def print_rooms(room_list):
+    for room in room_list:
+        room.print_timeslots()
+        room.print_availability()
+    print(f'\nRooms: {len(room_list)}')
+
+def dump_raw_response(to_write):
+    raw_grid_json = json.dumps(to_write, indent=4)
+    with open("raw_response.json", "w") as outfile:
+        outfile.write(raw_grid_json)
+    outfile.close()
+
 
 if __name__ == '__main__':
     colorama_init()
@@ -112,48 +196,25 @@ if __name__ == '__main__':
                      end=dt.fromisoformat("2023-06-13"), pageIndex=0, pageSize=18)
 
     headers = {'Origin': 'https://libcal.lakeheadu.ca'}
-    headers.update({'Referer': option_menu()})
+    headers.update({'Referer': 'https://libcal.lakeheadu.ca/spaces?lid=437&gid=0&c=0'})
 
+    post_data.update(option_menu())
     grid_data = FormData(post_data)
-    loop = asyncio.get_event_loop()
-    grid = loop.run_until_complete(grid_request(grid_data, headers))
 
-    json_object = json.dumps(grid, indent=4)
+    # Not really needed we can do a non async request because we wait for it anyway.
+    grid = asyncio.run(grid_request(grid_data, headers))
 
-    # We'll test with a local copy of the response, so we don't spam requests.
-    with open("one_day_range.json", "w") as outfile:
-        outfile.write(json_object)
+    # hacky awful way to handle a empty response
+    if len(grid['slots']) < 1:
+        print("Empty Response? Maybe no bookings avaliable....")
+        print(f'Request Data: {post_data}')
+        print(f'Headers Data: {headers}')
+        exit(1)
 
-    # We now have a list of dicts where each element (dict)
-    # is a timeslot.
-    slots = grid['slots']
-    rooms = [Room()]
+    dump_raw_response(grid)
+    parsed_json = parse_json_response(grid['slots'])
 
-    parsed_json = dict()
-    room_entry = []
+    room_list = build_rooms(parsed_json)
+    print_rooms(room_list)
 
-    for slot in slots:
-        slot_id = slot.pop('itemId')
-        if slot_id != rooms[-1].eid:
-            rooms[-1].time_slots = room_entry.copy()
-            rooms.append((Room(eid=slot_id)))
-            room_entry.clear()
-        room_entry.append(slot)
 
-    rooms[-1].time_slots = room_entry.copy()
-    rooms.pop(0)
-
-    for room in rooms:
-        # awful way to remove the weird 10-minute slot rooms...
-        if len(room.time_slots) > 26:
-            rooms.remove(room)
-        else:
-            room.print_timeslots()
-            room.print_availability()
-    print('\n'+str(len(rooms)))
-# https://library.lakeheadu.ca/r/
-
-"""
-Theres some weird items that count in increments of 10 or 15 as well, I dont know why or what rooms they are
-
-"""
